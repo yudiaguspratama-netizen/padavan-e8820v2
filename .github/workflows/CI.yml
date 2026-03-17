@@ -4,6 +4,9 @@ on:
   workflow_dispatch:
   push:
     branches: [ master ]
+    # Prevent unnecessary builds if you only change the README
+    paths-ignore:
+      - '**.md'
 
 jobs:
   build:
@@ -13,11 +16,21 @@ jobs:
       images_dir: /opt/images
     steps:
       - uses: actions/checkout@v3
-      
+
+      # CRITICAL: This clears ~20GB of space so the compiler runs faster
+      - name: Maximize Build Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo docker image prune -a -f
+
       - name: Prepare environment
         run: |
           sudo apt update
-          sudo apt install -y libtool-bin gperf python3-docutils autopoint gettext 7z
+          # Added build-essential and cleaning apt cache to save time
+          sudo apt install -y libtool-bin gperf python3-docutils autopoint gettext 7z build-essential
+          sudo apt clean
 
       - name: Prepare toolchain
         run: |
@@ -28,11 +41,14 @@ jobs:
         run: |
           cd trunk
           mkdir -p ${images_dir}
-          # Menjalankan build khusus target E8820V2
+          # Using the standard build script for E8820V2
           fakeroot ./build_firmware_ci E8820V2
-          if [ $? = 0 ]; then 
+          
+          # Check if the file exists before copying to avoid silent failures
+          if [ -f images/*.trx ]; then
             cp -f images/*.trx ${images_dir}/E8820V2.trx
-          else 
+          else
+            echo "Build failed: Image not found"
             exit 1
           fi
 
